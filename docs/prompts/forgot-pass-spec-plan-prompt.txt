@@ -1,0 +1,24 @@
+Read .claude/specs/forgot-password.md (and re-read docs/TDD.md,
+backend/app/db/session.py, backend/app/core/mailer.py, backend/app/core/config.py,
+backend/app/core/security.py, backend/app/services/auth_service.py,
+backend/app/api/routes/auth.py, and frontend/templates/login.html).
+
+Based on the spec, write a detailed, phase-by-phase implementation plan and save it
+ONLY as .claude/specs/forgot-password-plan.md.
+
+Do NOT write or modify any source code in this step — produce the plan document only.
+The plan must list, per phase: the exact files to modify/create, the precise additive 
+changes (including the `password_resets` table creation pattern in session.py using 
+idempotent SQL, the `start_reset` and `consume_reset` service methods using pure-stdlib 
+`secrets` and `hashlib.sha256`, the four new API routes in auth.py, the unconfigured SMTP 
+graceful degradation gate, and the newly added first-party templates). 
+
+The plan must explicitly describe how the feature is fully hardened: both the emailed link 
+and form submission targets must be built exclusively from `config.APP_BASE_URL` (completely 
+ignoring dynamic request headers to prevent Host Header Injection), and templates must load 
+no third-party cross-origin assets (preventing token leakage via the Referer header). 
+
+Do NOT change any existing SQL query construction patterns—every new query must use 
+parameterized `?` placeholders. Do NOT alter auth_service.login(), signup(), or any global 
+middleware. Preserve all other existing functionality exactly as it stands, and do NOT 
+introduce any intentional vulnerabilities. Include all verification steps from the spec.

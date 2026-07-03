@@ -1,0 +1,25 @@
+Read .claude/specs/forgot-password-plan.md and implement it phase by phase,
+following it exactly. Only touch the files the plan names (backend/app/db/session.py,
+backend/app/services/password_reset_service.py, backend/app/core/mailer.py,
+backend/app/api/routes/auth.py, frontend/templates/forgot_password.html,
+frontend/templates/reset_password.html, frontend/templates/login.html, and
+frontend/static/css/*.css). Do NOT change any existing SQL query construction pattern —
+every new query must use parameterized `?` placeholders. Do NOT alter
+auth_service.login(), signup(), change_password(), main.py, core/security.py,
+core/csrf.py, or core/rate_limit.py, and do NOT introduce any new vulnerability of any
+kind — in particular, confirm both the emailed reset link and the reset form's action
+URL are built only from config.APP_BASE_URL (never request headers or request.url), and
+confirm the reset page loads no third-party cross-origin assets.
+
+After implementing, remind me to run `uv sync`, restart the app so `init_db()` creates
+the new `password_resets` table, and sign up + verify a test user; then walk through the
+plan's verification steps (schema check via `sqlite3 vulnerable_app.db ".schema
+password_resets"`, requesting a reset link and confirming the generic response is
+identical for a known vs. unknown email, opening the emailed link and confirming the
+form's action attribute matches config.APP_BASE_URL exactly, submitting a strong new
+password and confirming `users.password` updates to a bcrypt hash while
+`password_resets.used` flips to 1, replaying the same token and confirming it's
+rejected, letting a token expire and confirming it's rejected, a missing CSRF token
+returning 403, a burst of requests triggering the rate limiter's 429, and the forged
+`Host` header check confirming it has no effect on the rendered form action) and report
+the result.

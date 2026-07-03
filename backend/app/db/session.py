@@ -174,5 +174,21 @@ def init_db():
                 # this branch, so new signups keep their explicit 0.)
                 conn.execute("UPDATE users SET is_verified = 1")
 
+    # Forgot Password (v2.1.0): brand-new table for token-based password reset.
+    # Stores ONLY the SHA-256 hash of the token (never the plaintext) and the
+    # expiry / used state. The plaintext lives only in the email and in the
+    # user's URL bar. No ALTER TABLE is needed (this is a brand-new table, not
+    # a column on an existing one); CREATE TABLE IF NOT EXISTS makes the
+    # migration idempotent on every boot.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS password_resets (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            expires_at REAL NOT NULL,
+            used       INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     conn.commit()
     conn.close()
