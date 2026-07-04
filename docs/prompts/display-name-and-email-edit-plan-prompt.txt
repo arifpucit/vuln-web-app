@@ -1,0 +1,36 @@
+You are working in the `vuln-web-app` repository (v2.0.0 reference) on branch
+feature/display-name-and-email-edit. Write the PLAN document for the
+"Profile Editing — Display Name + Email" slice (release v2.1.0) EXACTLY in
+the format of the existing plan docs.
+
+READ first and follow precisely:
+- .claude/specs/display-name-and-email-edit.md   (the spec — authoritative)
+- .claude/specs/captcha-on-login-plan.md         (the format template)
+- .claude/specs/email-verification-on-signup.md  (the verification flow this slice reuses)
+- CLAUDE.md                                       (project rules)
+
+The plan must be a PER-FILE TASK LIST with a verification section. It is
+executable: another agent (or the same agent, in execute mode) should be
+able to read the plan and know exactly what to type, in what order, with
+what to verify at each step.
+
+Mirror the structure of captcha-on-login-plan.md:
+  1. Goal
+  2. Files to change (NEW vs MODIFIED)
+  3. Execution order (numbered steps)
+  4. Per-step details (for each numbered step, list: files, what to add/modify,
+     why, what to verify)
+  5. Verification (end-to-end automated + manual + security spot-check)
+  6. Out of scope (deferred to a future slice)
+  7. Risks
+
+Write the plan to: .claude/specs/display-name-and-email-edit-plan.md
+
+Length budget: ~20-30k characters (concise task list, NOT a re-statement
+of the spec). The plan is the "how", the spec is the "what/why".
+
+Sanity-check:
+- The plan references the spec at every step.
+- The plan lists the exact test cases to write (one per row in a table).
+- The plan includes the manual smoke-test repro steps.
+- The plan honors the files-MUST-NOT-be-touched list from the spec.

@@ -97,6 +97,9 @@ def init_db():
     - `totp_last_step INTEGER`: the last accepted TOTP time-step counter, for
       replay protection (a code already used cannot be reused inside its window);
       NULL until the first successful verify.
+    - `display_name TEXT`: an optional custom display name shown on the dashboard
+      (Profile Editing: Display Name + Email feature, v2.1.0). NULL means "use
+      username as display name" (the fallback applied on /welcome).
     """
     conn = get_db()
     conn.execute(
@@ -160,6 +163,10 @@ def init_db():
         "totp_secret": "ALTER TABLE users ADD COLUMN totp_secret TEXT",
         "totp_enabled": "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
         "totp_last_step": "ALTER TABLE users ADD COLUMN totp_last_step INTEGER",
+        # Profile Editing: Display Name + Email (v2.1.0): one column. NULL means
+        # "use username as display name". The default (NULL) already means "no
+        # custom display name", so NO grandfather UPDATE is needed.
+        "display_name": "ALTER TABLE users ADD COLUMN display_name TEXT",
     }
     for column, ddl in migrations.items():
         if column not in existing:

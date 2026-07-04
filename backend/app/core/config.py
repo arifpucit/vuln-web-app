@@ -1,6 +1,6 @@
 """Configuration + .env loading for the Continue-with-Google, Email
 Verification, Account-Lockout, Email-OTP-2FA, Authenticator-App-TOTP-2FA,
-QR-Code-Login, and CAPTCHA-on-Login features.
+QR-Code-Login, CAPTCHA-on-Login, and Profile-Editing features.
 
 Stdlib only -- no python-dotenv dependency. This module:
 
@@ -16,6 +16,8 @@ Stdlib only -- no python-dotenv dependency. This module:
    own -- OTP delivery reuses ``is_email_configured()``).
 6. Exposes the Authenticator-App-TOTP settings (env-tunable, non-secret; no gate
    -- TOTP needs neither SMTP nor Google, so the feature is always available).
+7. Exposes the Profile-Editing settings (Profile Editing -- Display Name + Email,
+   v2.1.0) -- no new env tunables; the feature reuses existing settings.
 
 Design notes (production posture):
 - **Real environment variables always win** over ``.env`` values. A container,

@@ -44,6 +44,7 @@ from app.services import oauth_service
 from app.services import verification_service
 from app.services import otp_service
 from app.services import totp_service
+from app.services import profile_service
 from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
@@ -341,19 +342,24 @@ async def welcome_page(request: Request):
     # Note: only verified users ever reach here -- login() refuses to create a
     # session for an unverified account (Email-Verification, v1.0.4) -- so the
     # dashboard needs no verification check or banner.
+    #
+    # Profile Editing (v2.1.0): display_name fallback - if set, show that instead
+    # of username on the dashboard. The session carries both; NULL display_name
+    # means use username.
     username = request.session.get("username", "")
+    display_name = request.session.get("display_name") or username
 
     with open(os.path.join(TEMPLATE_DIR, "dashboard.html"), "r") as f:
         page = f.read()
 
-    # FIXED: Stored XSS closed -- username escaped before substitution.
+    # FIXED: Stored XSS closed -- display_name/username escaped before substitution.
     # The raw value remains in the session/database (output-encoding fix, not input filtering).
     #
     # The raw username can contain `<script>` from a malicious signup --
     # we do NOT sanitize on the way in (that would lose information and
     # is famously fragile). Instead we escape on the way out, so the
     # rendered HTML treats the username as text, never as markup.
-    safe_username = html.escape(username, quote=True)
+    safe_username = html.escape(display_name, quote=True)
     page = page.replace("{{username}}", safe_username)
 
     return HTMLResponse(content=page)
@@ -377,16 +383,19 @@ async def profile_page(request: Request):
     # 2FA cards (Email OTP v1.0.6 + Authenticator-App TOTP v1.0.7): the session
     # does not carry either flag, so read both for the cards' initial state
     # (parameterized SELECT -- VULN-1).
+    # Profile Editing (v2.1.0): also read display_name and is_verified.
     conn = get_db()
     try:
         row = conn.execute(
-            "SELECT two_factor_enabled, totp_enabled FROM users WHERE id = ?",
+            "SELECT two_factor_enabled, totp_enabled, display_name, is_verified FROM users WHERE id = ?",
             [user_id],
         ).fetchone()
     finally:
         conn.close()
     twofa_enabled = bool(row["two_factor_enabled"]) if row else False
     totp_enabled = bool(row["totp_enabled"]) if row else False
+    display_name = row["display_name"] if row else ""
+    email_verified = bool(row["is_verified"]) if row else True
 
     with open(os.path.join(TEMPLATE_DIR, "profile.html"), "r") as f:
         page = f.read()
@@ -406,6 +415,10 @@ async def profile_page(request: Request):
         "{{email_configured}}", "1" if config.is_email_configured() else "0"
     )
     page = page.replace("{{totp_enabled}}", "1" if totp_enabled else "0")
+
+    # Profile Editing (v2.1.0): splices for the Account Details card.
+    page = page.replace("{{display_name}}", html.escape(display_name or "", quote=True))
+    page = page.replace("{{email_verified}}", "true" if email_verified else "false")
 
     return HTMLResponse(content=page)
 
@@ -723,6 +736,93 @@ async def profile_password_post(
     ignores the extra csrf_token field.
     """
     return auth_service.change_password(request, current_password, new_password)
+
+
+@router.post("/profile")
+async def profile_post(
+    request: Request,
+    display_name: str = Form(""),
+    email: str = Form(""),
+):
+    """Handle account details updates (display name and email change, v2.1.0).
+
+    Session-gated. Updates display_name directly, triggers email re-verification
+    if the email changes. Refreshes the session from the DB after every edit to
+    keep it consistent. The CSRF token and per-IP rate limit are enforced by
+    middleware before this runs.
+    """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(content={"error": "Not authenticated"}, status_code=401)
+
+    # Update display name
+    dn_result = profile_service.update_display_name(user_id, display_name)
+    if not dn_result.get("success"):
+        return JSONResponse(content={"error": dn_result.get("message")}, status_code=400)
+
+    # Update email if changed
+    email_result = {"success": True}  # default - no change
+    email_verification = False
+    if email:
+        email_result = profile_service.update_email(user_id, email)
+        if not email_result.get("success"):
+            return JSONResponse(content={"error": email_result.get("message")}, status_code=400)
+        email_verification = email_result.get("email_verification", False)
+
+    # Refresh session cache
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT username, email, display_name, is_verified FROM users WHERE id = ?",
+            [user_id],
+        ).fetchone()
+        if row:
+            request.session["username"] = row["username"]
+            request.session["email"] = row["email"]
+            request.session["display_name"] = row["display_name"] or ""
+            request.session["email_verified"] = bool(row["is_verified"])
+    finally:
+        conn.close()
+
+    return JSONResponse(content={
+        "success": True,
+        "message": "Account updated.",
+        "email_verification": email_verification,
+    })
+
+
+@router.post("/profile/email/resend")
+async def profile_email_resend(request: Request):
+    """Re-send the email verification link for the current email (v2.1.0).
+
+    Session-gated. Uses the email already on file (not user-submitted). The CSRF
+    token and per-IP rate limit are enforced by middleware before this runs.
+    """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return JSONResponse(content={"error": "Not authenticated"}, status_code=401)
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT username, email FROM users WHERE id = ?", [user_id]
+        ).fetchone()
+        if not row:
+            return JSONResponse(content={"error": "User not found"}, status_code=404)
+    finally:
+        conn.close()
+
+    success = verification_service.start_verification(
+        user_id, row["username"], row["email"]
+    )
+    if not success:
+        return JSONResponse(
+            content={"error": "Failed to send verification email."}, status_code=400
+        )
+
+    return JSONResponse(
+        content={"success": True, "message": "Verification email resent."}
+    )
 
 
 @router.get("/auth/google/login")

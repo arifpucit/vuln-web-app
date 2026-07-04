@@ -1,0 +1,109 @@
+You are working in the `vuln-web-app` repository (v2.0.0 reference) on branch
+feature/display-name-and-email-edit. Implement README feature "Profile
+Editing — Display Name + Email" (release v2.1.0) EXACTLY as specified.
+
+READ first and follow precisely:
+- .claude/specs/display-name-and-email-edit.md         (the spec — authoritative)
+- .claude/specs/display-name-and-email-edit-plan.md     (the step-by-step plan — follow in order)
+- CLAUDE.md                                              (Important Rules — all 8 vulns stay closed)
+- C:\Users\User\.claude\plans\effervescent-crunching-eich.md   (the user-approved design)
+
+Then implement the plan. Create/modify ONLY these files:
+  NEW:      backend/app/services/profile_service.py
+            backend/tests/__init__.py
+            backend/tests/conftest.py
+            backend/tests/test_vuln_closures.py
+            backend/tests/test_auth_service.py
+            backend/tests/test_verification.py
+            backend/tests/test_profile_edit.py
+  MODIFIED: backend/app/db/session.py             (one display_name column + idempotent ALTER)
+            backend/app/core/mailer.py             (one new function)
+            backend/app/core/config.py             (docstring update only)
+            backend/app/api/routes/auth.py         (two new POST routes, extended GET /profile, extended welcome_page)
+            frontend/templates/profile.html        (additive Account Details card)
+            frontend/static/css/styles.css         (small additive blocks)
+            pyproject.toml                          ([dependency-groups] dev = [...])
+            README.md                                (Feature Enhancements row + release row + setup)
+            CLAUDE.md                                (integration paragraph + Important Rule + hierarchy entry)
+
+Do NOT modify (git diff MUST stay empty for these):
+  backend/app/main.py
+  backend/app/services/auth_service.py
+  backend/app/services/lockout_service.py
+  backend/app/services/verification_service.py
+  backend/app/services/oauth_service.py
+  backend/app/services/otp_service.py
+  backend/app/services/totp_service.py
+  backend/app/core/security.py
+  backend/app/core/csrf.py
+  backend/app/core/rate_limit.py
+  backend/app/core/oauth.py
+  backend/app/core/qr_login.py
+  backend/app/core/captcha.py
+  frontend/templates/login.html
+  frontend/templates/signup.html
+  frontend/templates/dashboard.html
+  frontend/templates/check_email.html
+  frontend/templates/verify_result.html
+  frontend/templates/email_not_configured.html
+  frontend/templates/oauth_not_configured.html
+  frontend/templates/qr_approve.html
+  frontend/templates/otp_verify.html
+  frontend/templates/totp_verify.html
+  pyproject.toml's `dependencies` array (only [dependency-groups] is added)
+  .env.example (no new tunable)
+
+Non-negotiable invariants:
+- profile_service.update_account uses parameterized SQL only (? placeholders,
+  bound values as a separate list). The new display_name column is read and
+  written by primary key (WHERE id = ?).
+- profile_service.validate_email_format uses ^[^@\s]+@[^@\s]+\.[^@\s]+$ and
+  length <= 254. Empty display_name is allowed (stored as NULL).
+- mailer.send_email_change_verification uses the same SendGrid transport
+  (urllib), same html.escape(username, quote=True) discipline, same
+  fail-safe return False contract, same logger discipline (never logs the token).
+- The two new POST routes are thin wrappers over profile_service. They
+  require a session (401 if absent), inherit CSRF + rate-limit via middleware
+  (NO middleware changes), and return JSON for fetch().
+- GET /profile extends the splice set with {{display_name}} and
+  {{email_verified}} (the existing username/email/csrf_token/twofa_enabled/
+  totp_enabled/email_configured splices are unchanged).
+- GET /welcome swaps the {{username}} splice's value to be
+  request.session.get("display_name") or username, escaped identically.
+  The template's {{username}} token is unchanged.
+- profile.html adds the Account Details card ABOVE the Change Password card.
+  It uses the same profile-card > section-title + form + profile-message
+  structure, the same hidden csrf_token field, the same
+  URLSearchParams(new FormData(form)) + fetch() submit pattern, and the
+  same is-success/is-error feedback styling. No existing card is modified.
+- styles.css adds new selectors at the end. No existing rule is modified.
+- conftest.py provides tmp_db (monkeypatch DB_PATH to a temp file +
+  init_db()), client (TestClient), csrf_session (regex-extract from /login),
+  captcha_disabled (autouse; clear TURNSTILE_* env vars).
+- The 14 test cases in test_profile_edit.py cover the spec's FR-01..FR-23
+  (visible in the spec's §5.3 / FR-23 / table in the plan doc).
+- The 8 VULN regression tests in test_vuln_closures.py cover VULN-1..8
+  with one named test per closed vulnerability.
+
+After implementing, VERIFY (report results):
+1. `uv sync --dev` succeeds; pytest and pytest-asyncio are installed.
+2. `uv run pytest -q` is GREEN. All tests pass; no skips, no xfails.
+3. `uv run backend/app/main.py` boots with no traceback.
+4. The Account Details card is visible on /profile (manual smoke).
+5. Editing the display name updates the row, the session, and the dashboard.
+6. Editing the email flips is_verified=0, writes a new verification token,
+   and the page shows the pending pill.
+7. /verify?token=... clears the token and flips is_verified=1.
+8. The display-name-or-fallback rule: a user with display_name="Alice" sees
+   "Alice" on /welcome; a user with display_name=NULL sees their username.
+9. Audits:
+     - `git diff --stat` is empty for the MUST-NOT list above.
+     - `PRAGMA table_info(users)` adds ONE column: display_name.
+     - pyproject.toml's `dependencies` array is unchanged; only
+       [dependency-groups] is added.
+     - uv.lock is updated only by `uv sync --dev`.
+     - All 8 VULN regression tests pass.
+     - README feature table marks "Profile Editing" = Done (v2.1.0);
+       CLAUDE.md is updated; .env.example is unchanged.
+
+Confirm the final `git status --porcelain` matches the spec's expected list when done.

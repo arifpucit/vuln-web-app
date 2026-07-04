@@ -1,0 +1,55 @@
+You are working in the `vuln-web-app` repository (v2.0.0 reference) on branch
+feature/display-name-and-email-edit. Write the SPEC document for README feature
+"Profile Editing — Display Name + Email" (release v2.1.0) EXACTLY in the format
+of the existing specs.
+
+READ first and follow precisely:
+- .claude/specs/captcha-on-login.md          (the format template — mirror its structure verbatim)
+- .claude/specs/email-verification-on-signup.md  (the verification flow this slice reuses)
+- .claude/specs/user-profile-page.md         (the existing /profile page this slice extends)
+- CLAUDE.md                                    (project rules, schema-change history)
+
+The user's chosen product choices (do NOT change):
+1. Display name max length = 60 chars.
+2. Email change while unverified: keep the change, show a "pending verification" pill
+   on the profile page, allow a session-gated Resend. Session stays valid.
+3. No audit row / no "last edited" timestamp on the dashboard.
+4. Bundle the VULN regression tests in this same PR (do NOT split them into a separate
+   "set up the test suite" PR).
+
+The spec must mirror the structure of captcha-on-login.md exactly:
+  1. Overview / Purpose
+     1.1 Design Decisions (product-owner choices)
+     1.2 Built on existing primitives
+     1.3 The implementation touches
+     1.4 What this slice does NOT do
+     1.5 Explicit Preservation Note — All Eight Closed Vulnerabilities Stay Closed
+     1.6 [add anything else the format has]
+  2. Scope & Non-Goals
+     2.1 In Scope
+     2.2 Out of Scope (Intentionally)
+     2.3 Files that MUST NOT be modified
+  3. Affected Files (table)
+  4. Functional Requirements (FR-01..N)
+  5. Non-Functional Requirements (NFR-01..N)
+  6. Open Questions (resolved before merge)
+  7. Out of Scope (Future Slices)
+  8. Verification (automated + manual + security spot-check)
+  9. Risks and Mitigations (table)
+ 10. References
+
+Write the spec to: .claude/specs/display-name-and-email-edit.md
+
+Length budget: ~40k characters (long, PRD-style). The captcha-on-login.md
+spec is roughly the right size; aim for similar.
+
+After writing, sanity-check:
+- The spec explicitly preserves all 8 closed vulnerabilities (VULN-1..8).
+- The spec identifies the EXACT files that will be touched (one new service,
+  one new mailer function, one new column, one new card, two new routes, ~14
+  new tests, docs).
+- The spec lists the files that MUST NOT be modified (main.py, auth_service.login(),
+  every other service, every other core module, every other template).
+- The spec is consistent with the plan in
+  C:\Users\User\.claude\plans\effervescent-crunching-eich.md (the user has
+  already approved the high-level design).

@@ -157,3 +157,40 @@ def send_otp_email(to_email: str, username: str, code: str) -> bool:
     if ok:
         logger.info("OTP email sent to %s", to_email)
     return ok
+
+
+def send_email_change_verification(to_email: str, username: str, verify_url: str) -> bool:
+    """Send a verification link when the user changes their email address.
+
+    Reuses the same SendGrid transport as send_verification_email(). Subject and
+    body are different so the user's inbox makes the context clear. Returns False
+    on any failure (including when email is not configured); never raises.
+    """
+    if not config.is_email_configured():
+        logger.warning("Email not configured; cannot send email change verification.")
+        return False
+
+    safe_username = html.escape(username or "", quote=True)
+    safe_url = html.escape(verify_url, quote=True)
+
+    subject = "Verify your new email address"
+    text_body = (
+        f"Hi {username},\n\n"
+        "You requested to change your email address. Please verify your new "
+        "address by clicking the link below:\n\n"
+        f"{verify_url}\n\n"
+        "If you did not request this change, please ignore this email."
+    )
+    html_body = (
+        f"<p>Hi {safe_username},</p>"
+        "<p>You requested to change your email address. Please verify your new "
+        "address by clicking the link below:</p>"
+        f'<p><a href="{safe_url}">Verify Email</a></p>'
+        "<p>If you did not request this change, please ignore this email.</p>"
+        "<p>— The Vuln Web App Team</p>"
+    )
+
+    ok = _deliver(to_email, subject, text_body, html_body)
+    if ok:
+        logger.info("Email change verification sent to %s", to_email)
+    return ok

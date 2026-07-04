@@ -67,6 +67,32 @@
             </div>
         </div>
 
+        <!-- Account Details (v2.1.0) -->
+        <div class="profile-card">
+            <h2 class="section-title">Account Details</h2>
+            <form id="account-details-form">
+                <input type="hidden" name="csrf_token" value="{{csrf_token}}">
+                <div class="form-group">
+                    <label class="form-label" for="display_name">Display Name</label>
+                    <input type="text" id="display_name" name="display_name" class="form-input"
+                           value="{{display_name}}" maxlength="60" placeholder="Optional, shown on dashboard">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="email">Email Address</label>
+                    <input type="email" id="email" name="email" class="form-input"
+                           value="{{email}}" maxlength="254">
+                    {% if email_verified == "false" %}
+                    <span class="pending-pill">Pending verification</span>
+                    {% endif %}
+                </div>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                {% if email_verified == "false" %}
+                <button type="button" class="btn btn-secondary" id="resend-verification">Resend Verification Email</button>
+                {% endif %}
+                <div class="profile-message" aria-live="polite"></div>
+            </form>
+        </div>
+
         <!-- Change Password -->
         <div class="profile-card">
             <h2 class="section-title">Change Password</h2>
@@ -190,6 +216,74 @@
                 show('Something went wrong. Please try again.', false);
             }
         });
+    </script>
+
+    <script>
+        // Account Details form (Profile Editing, v2.1.0)
+        (function () {
+            var form = document.getElementById('account-details-form');
+            var msgDiv = form.querySelector('.profile-message');
+            var formEmail = form.querySelector('input[name="email"]');
+
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                msgDiv.textContent = 'Saving...';
+                msgDiv.className = 'profile-message';
+
+                var formData = new FormData(form);
+                var params = new URLSearchParams(formData);
+
+                try {
+                    var resp = await fetch('/profile', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                        body: params.toString()
+                    });
+                    var data = await resp.json();
+                    if (data.success) {
+                        msgDiv.textContent = data.message;
+                        msgDiv.className = 'profile-message is-success';
+                        if (data.email_verification) {
+                            setTimeout(function () { window.location.reload(); }, 1500);
+                        }
+                    } else {
+                        msgDiv.textContent = data.error || 'Error saving changes';
+                        msgDiv.className = 'profile-message is-error';
+                    }
+                } catch (err) {
+                    msgDiv.textContent = 'Network error';
+                    msgDiv.className = 'profile-message is-error';
+                }
+            });
+
+            // Resend verification button
+            var resendBtn = document.getElementById('resend-verification');
+            if (resendBtn) {
+                resendBtn.addEventListener('click', async function () {
+                    msgDiv.textContent = 'Sending...';
+                    msgDiv.className = 'profile-message';
+                    var csrf = form.querySelector('input[name="csrf_token"]').value;
+                    try {
+                        var resp = await fetch('/profile/email/resend', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                            body: 'csrf_token=' + encodeURIComponent(csrf)
+                        });
+                        var data = await resp.json();
+                        if (data.success) {
+                            msgDiv.textContent = data.message;
+                            msgDiv.className = 'profile-message is-success';
+                        } else {
+                            msgDiv.textContent = data.error || 'Failed to resend';
+                            msgDiv.className = 'profile-message is-error';
+                        }
+                    } catch (err) {
+                        msgDiv.textContent = 'Network error';
+                        msgDiv.className = 'profile-message is-error';
+                    }
+                });
+            }
+        })();
     </script>
 
     <script>

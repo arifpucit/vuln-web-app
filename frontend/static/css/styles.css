@@ -977,3 +977,46 @@ a:hover {
 .cf-turnstile {
     margin: 16px 0;
 }
+
+/* Profile: Account Details card (v2.1.0) — additive */
+.profile-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+
+.profile-card .section-title {
+    margin: 0 0 16px;
+    font-size: 1.25rem;
+    color: var(--text-primary);
+}
+
+.profile-message {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.profile-message.is-success {
+    background: var(--success-bg, #d4edda);
+    color: var(--success-text, #155724);
+}
+
+.profile-message.is-error {
+    background: var(--error-bg, #f8d7da);
+    color: var(--error-text, #721c24);
+}
+
+/* Pending verification pill */
+.pending-pill {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    background: var(--warning-bg, #fff3cd);
+    color: var(--warning-text, #856404);
+}
