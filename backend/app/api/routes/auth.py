@@ -44,6 +44,7 @@ from app.services import oauth_service
 from app.services import verification_service
 from app.services import otp_service
 from app.services import totp_service
+from app.services import password_reset_service
 from app.db.session import get_db
 
 logger = logging.getLogger(__name__)
@@ -205,6 +206,183 @@ async def verify_resend(
     POST); FastAPI's Form() ignores the extra csrf_token field.
     """
     return verification_service.resend_for_credentials(username, password)
+
+
+@router.get("/forgot-password")
+async def forgot_password_page(request: Request):
+    """Render the forgot-password form with a per-session CSRF token.
+
+    Same pattern as signup_page() / login_page(): load template, issue
+    token, splice via str.replace. When SMTP is not configured we render
+    the friendly "email not configured" page (mirrors GET /signup) so
+    the user sees an actionable message instead of a form that can't
+    succeed. The generic response on the POST keeps enumeration blocked
+    even when the GET degrades to the not-configured page.
+    """
+    if not config.is_email_configured():
+        return HTMLResponse(content=_load_template("email_not_configured.html"))
+    page = _load_template("forgot_password.html")
+    # FIXED: CSRF closed -- splice the per-session token into the form's
+    # hidden field. The middleware validates it on the matching POST.
+    token = get_or_create_csrf_token(request)
+    page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    return HTMLResponse(content=page)
+
+
+@router.post("/forgot-password")
+async def forgot_password_post(email: str = Form("")):
+    """Handle forgot-password form submission.
+
+    ALWAYS returns the same generic 200 JSON, regardless of whether
+    email matches a verified local account. This is the enumeration-
+    resistance gate. The start_reset call is silent on unknown email /
+    unverified / Google accounts; the mailer is fail-safe; the route's
+    response body, status code, and timing are constant.
+
+    No session is written. The CSRF token and per-IP rate limit are
+    enforced by middleware before this handler runs.
+    """
+    password_reset_service.start_reset(email)
+    return JSONResponse(
+        content={
+            "success": True,
+            "message": (
+                "If that email matches an account, a reset link has "
+                "been sent to it."
+            ),
+        }
+    )
+
+
+@router.get("/reset-password")
+async def reset_password_page(request: Request, token: str = ""):
+    """Render the reset-password form (or an outcome message).
+
+    The form's action is built EXCLUSIVELY from config.APP_BASE_URL
+    (see form_action below). request.url, request.url.scheme,
+    request.url.netloc, request.headers['host'], and
+    request.headers['x-forwarded-host'] are NEVER read here -- closing
+    the Host Header Injection vector at the spec level. Even if a
+    student sets `Host: evil.example` on this request, the rendered
+    form action is unchanged.
+
+    The raw token is NEVER reflected as markup (VULN-3): it is dropped
+    from the page once the form is rendered. The {{status}} flag
+    controls whether the form shows; "ok" -> form, anything else ->
+    fixed outcome message.
+    """
+    status = password_reset_service.lookup_status(token)["status"]
+    page = _load_template("reset_password.html")
+    # FIXED: CSRF closed -- splice the per-session token.
+    csrf = get_or_create_csrf_token(request)
+    page = page.replace("{{csrf_token}}", html.escape(csrf, quote=True))
+    # FIXED: Server-side-only URL -- derived from config.APP_BASE_URL, NEVER
+    # from request.url or any request header. This is the spec-level closure
+    # of the Host Header Injection vector (forgot-password.md NFR-09 / FR-16).
+    form_action = f"{config.APP_BASE_URL}/reset-password"
+    page = page.replace("{{form_action}}", html.escape(form_action, quote=True))
+    # FIXED: Stored/Reflected XSS closed -- escape the status flag before
+    # splicing (defense in depth; the values are author-controlled, but
+    # the splice pattern is used everywhere in this module).
+    page = page.replace("{{status}}", html.escape(status, quote=True))
+
+    # Build the form or the outcome message based on the token status.
+    if status == "ok":
+        inner = (
+            '<form id="reset-form" method="POST" action="'
+            + form_action
+            + '">'
+            '<input type="hidden" name="csrf_token" value="'
+            + html.escape(csrf, quote=True)
+            + '">'
+            '<div class="form-group">'
+            '<label class="form-label" for="password">New password</label>'
+            '<input type="password" id="password" name="password" class="form-input" required>'
+            '</div>'
+            '<div class="form-group">'
+            '<label class="form-label" for="confirm_password">Confirm new password</label>'
+            '<input type="password" id="confirm_password" name="confirm_password" class="form-input" required>'
+            '</div>'
+            '<div id="reset-error" class="error-message" role="alert" style="display: none;"></div>'
+            '<button type="submit" class="btn btn-primary">Reset password</button>'
+            '</form>'
+        )
+    else:
+        messages = {
+            "expired": (
+                "This reset link has expired.",
+                '<p><a href="/forgot-password">Request a new one</a></p>',
+            ),
+            "used": (
+                "This reset link has already been used.",
+                '<p><a href="/forgot-password">Request a new one</a></p>',
+            ),
+            "invalid": (
+                "This reset link is invalid.",
+                '<p><a href="/forgot-password">Request a new link</a></p>',
+            ),
+        }
+        title, follow = messages.get(status, messages["invalid"])
+        inner = (
+            '<h3 class="reset-status-heading">'
+            + html.escape(title, quote=True)
+            + "</h3>"
+            + follow
+        )
+    page = page.replace("{{form_or_message}}", inner)
+    return HTMLResponse(content=page)
+
+
+@router.post("/reset-password")
+async def reset_password_post(
+    request: Request,
+    token: str = Form(""),
+    password: str = Form(""),
+    confirm_password: str = Form(""),
+):
+    """Handle reset-password form submission.
+
+    Returns JSON for every outcome so the page's fetch() handler can
+    render feedback inline. On success the user is NOT logged in --
+    they must log in with the new password. Client-side mismatch
+    (password != confirm_password) is caught by the page's inline JS
+    (mirrors the v0 signup posture); confirm_password is Form-parsed
+    here but not passed to the service (the service is the
+    authoritative gate for password strength; mismatch is a UI concern).
+
+    The CSRF token and per-IP rate limit are enforced by middleware
+    before this handler runs.
+    """
+    if password != confirm_password:
+        return JSONResponse(
+            content={"error": "Passwords do not match."},
+            status_code=400,
+        )
+    result = password_reset_service.consume_reset(token, password)
+    status = result["status"]
+    if status == "ok":
+        return JSONResponse(
+            content={
+                "success": True,
+                "message": (
+                    "Password updated. Please log in with your new password."
+                ),
+            }
+        )
+    messages = {
+        "invalid": "Invalid reset link.",
+        "used": "This reset link has already been used.",
+        "expired": "This reset link has expired. Request a new one.",
+        "weak_password": (
+            "Password must be at least 8 characters and include an "
+            "uppercase letter, a lowercase letter, a digit, and a "
+            "special character."
+        ),
+    }
+    return JSONResponse(
+        content={"error": messages.get(status, messages["invalid"])},
+        status_code=400,
+    )
 
 
 @router.get("/login")

@@ -1,0 +1,49 @@
+You are working in the cloned `fvuln-web-app` repository (the v0.0.1 base release).
+
+READ first, to ground the spec in the real code and house style:
+- .claude/specs/app-foundation.md        (study its section structure and style)
+- backend/app/core/security.py
+- backend/app/services/auth_service.py   (focus on login() and how email verification tokens are generated/stored)
+- backend/app/models/ (or wherever database schemas/tables are managed)
+
+Then CREATE EXACTLY ONE file and nothing else: .claude/specs/forgot-password.md
+Do NOT write any source code, plan file, or modify any existing file.
+
+The spec MUST follow the same documentation style as .claude/specs/app-foundation.md
+and contain these sections, in order:
+  - Title and one-paragraph Overview / Purpose
+  - Scope & Non-Goals (state clearly that this feature introduces NO new intentional
+    vulnerability, unlike other features in this lab that close one tracked OWASP
+    vulnerability while deliberately leaving others open — this feature is fully
+    hardened end to end)
+  - Affected Files (exact repository paths for routes, schemas, and services)
+  - Functional Requirements (FR-XX), Non-Functional Requirements (NFR-XX)
+  - Success Paths (SP-XX), Edge Cases (EC-XX), Acceptance Criteria (AC-XX)
+  - Test Cases (table: ID | Scenario | Precondition | Expected Result)
+  - Verification Steps (exact UI steps, commands, and local mock SMTP checks)
+
+Fix content:
+Implement a Token-Based Forgot Password reset flow via an email link.
+Add a new database table `password_resets` to store user_id, token_hash, expires_at, and used.
+Generate plaintext tokens using `secrets.token_urlsafe(32)` from the Python standard library.
+The plaintext token must NEVER be saved directly; hash it using hashlib.sha256() before storing it in the `token_hash` column.
+The link sent via email must point to `/reset-password?token=<plaintext_token>` and expire strictly after 15 minutes.
+Ensure the POST route for `/forgot-password` returns a generic response message ("If that email matches an account, a reset link has been sent") regardless of whether the email exists in the database to resist user enumeration.
+Integrate the existing 5-criteria strong password validation logic (length >= 8, lower, upper, digit, special) inside the `/reset-password` submission route.
+Once a password is successfully updated, mark the token as `used = TRUE` immediately to prevent token reuse.
+Incorporate the app's existing rate-limiter and CSRF protection on both POST endpoints.
+Both the emailed reset link AND the reset form's submission target must be built exclusively
+from the trusted server-side `config.APP_BASE_URL` setting — never from request headers,
+`request.url`, or any other client-supplied value. This is a hard requirement, not a style
+preference: it is what keeps the feature free of a host-header-trust vulnerability.
+The reset page must load NO third-party script, stylesheet, image, font, or other
+cross-origin asset — every resource on the page must be first-party, so no `Referer`
+header carrying the token-bearing URL can ever be sent to an external origin.
+
+Do NOT change SQL query construction — every new query must be parameterized.
+Do NOT modify auth_service.login(), auth_service.signup(), auth_service.change_password(),
+main.py, core/security.py, core/csrf.py, or core/rate_limit.py for this feature.
+Preserve every other already-closed vulnerability's fix exactly as it stands, and do NOT
+introduce any new vulnerability of any kind as part of this feature.
+
+Output only that one spec file. Confirm the path when done: `.claude/specs/forgot-password.md`

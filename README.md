@@ -74,8 +74,9 @@ This repository ships in several tagged releases. The versions below are the mai
 | **v1.0.7** | Students who want the reference **plus authenticator-app 2FA** | Everything in v1.0.6 plus **MFA via Authenticator App (TOTP)**: a user enrolls Google Authenticator / Authy by scanning a **QR code** on their profile and confirming one code; thereafter a correct password issues a **TOTP challenge** on a dedicated `/login/totp` screen instead of completing login. **Independent of Email OTP and takes precedence** when both are on (no email sent); it needs **no SMTP and no Google**, so it works on a fresh clone. TOTP math is pure stdlib; the **only new dependency is `segno`** (pure-Python QR). Session-only (no JWT); replay-guarded. Fifth DB-schema change (3 columns on `users`). |
 | **v1.0.8** | Students who want the reference **plus QR-code login** | Everything in v1.0.7 plus **QR Code Login**: an unauthenticated browser is shown a **QR code** on the login page and an already-signed-in device scans it, confirms on an **Approve / Reject** page, and logs the first browser in — the WhatsApp-Web pattern. The desktop **polls** for approval; pairing state is held in an **in-memory store** (like the rate limiter), so there is **no database-schema change** and **no new dependency** (the QR image reuses `segno`). Tokens are single-use and short-lived, and an **owner-binding** check (only the browser that generated a QR can be logged in by it) closes the login-CSRF vector. Login stays **session-only (no JWT)**; the trust comes from the already-authenticated device (its second factor was already satisfied). |
 | **v2.0.0** | Students who want the reference **plus CAPTCHA on login** | Everything in v1.0.8 plus **CAPTCHA on Login** (**Cloudflare Turnstile**): the login form shows a Turnstile widget and **`POST /login` is verified server-side before any password check**, blocking automated/bot login attempts. Verification is a stdlib-`urllib` call to Cloudflare's `siteverify` — **no new dependency** and **no database-schema change**. With no keys set the widget isn't shown and login works exactly as today (graceful degrade, like the Google/SMTP setup pages); a configured-but-unreachable Cloudflare **fails open** so an outage can't lock everyone out. Keys come from a git-ignored `.env`; the check runs **before** the account-lockout/bcrypt logic, which is otherwise unchanged. |
+| **v2.1.0** | Students who want the reference **plus forgot password** | Everything in v2.0.0 plus **Forgot Password**: a user enters their email on `/forgot-password` and receives a single-use, 15-minute reset link (SMTP via the existing SendGrid transport). The new password is enforced by the same five-criteria strength policy as `change_password` and bcrypt-hashed before it touches the DB. The `POST /forgot-password` response is **identical for known and unknown emails** (enumeration resistance). The emailed link AND the form's `action` are built **exclusively from `config.APP_BASE_URL`** — never from request headers or `request.url` — closing the **Host Header Injection** vector at the spec level; the reset page loads **no third-party cross-origin assets**, closing the **Referer Leakage** vector. Sixth DB-schema change (new `password_resets` table). Stdlib only, no new dependency. |
 
-The incremental tags between them (**v0.1.2 – v0.1.7**) each close one additional vulnerability — see the [Bug Fixes](#bug-fixes) table for the version-by-version mapping. The feature-enhancement tags build on top of v1.0.0: **v1.0.1** adds the password strength meter, **v1.0.2** the User Profile Page, **v1.0.3** Continue with Google, **v1.0.4** Email Verification on Signup, **v1.0.5** Account Lockout, **v1.0.6** Email OTP 2FA, **v1.0.7** MFA via Authenticator App (TOTP), **v1.0.8** QR Code Login, and **v2.0.0** CAPTCHA on Login.
+The incremental tags between them (**v0.1.2 – v0.1.7**) each close one additional vulnerability — see the [Bug Fixes](#bug-fixes) table for the version-by-version mapping. The feature-enhancement tags build on top of v1.0.0: **v1.0.1** adds the password strength meter, **v1.0.2** the User Profile Page, **v1.0.3** Continue with Google, **v1.0.4** Email Verification on Signup, **v1.0.5** Account Lockout, **v1.0.6** Email OTP 2FA, **v1.0.7** MFA via Authenticator App (TOTP), **v1.0.8** QR Code Login, **v2.0.0** CAPTCHA on Login, and **v2.1.0** Forgot Password.
 
 ### Download the version you want
 
@@ -251,6 +252,47 @@ by password + lockout + rate-limit) so an outage can't lock everyone out.
 method; only its request now carries the Turnstile token.)*
 
 ---
+## Forgot Password — Setup (optional)
+
+As of **v2.1.0**, users can recover a forgotten password through a token-based
+email flow. The feature reuses the existing SendGrid transport and the
+existing `APP_BASE_URL` setting — no new credentials, no new dependency.
+
+- **No SMTP setup needed beyond Email Verification:** the reset email is
+  delivered through the same `SENDGRID_API_KEY` / `SENDGRID_FROM` already used
+  for signup verification and OTP. With those unset, `/forgot-password`
+  renders the same friendly "email not configured" page as `/signup`.
+- **15-minute strict TTL:** reset links expire exactly 15 minutes after they
+  are issued. The TTL is fixed by spec; the env var `PASSWORD_RESET_TTL_SECONDS`
+  is a non-secret demo knob (e.g. `=30` to demo expiry in seconds).
+- **Five-criteria strength policy:** the new password must satisfy the same
+  rule the change-password form uses (length ≥ 8, lower, upper, digit, special).
+  The check is server-authoritative via `auth_service.password_meets_policy()`
+  and enforced **before** the token is consumed (a weak submission leaves the
+  link usable for another try).
+- **Generic enumeration-resistant response:** `POST /forgot-password` returns
+  the same 200 JSON whether the email is known, unknown, unverified, or
+  Google-only. No oracle is exposed.
+- **Fully hardened (no new vulnerability):** the emailed link AND the form's
+  `action` are built **exclusively from `config.APP_BASE_URL`** — never from
+  request headers, `request.url`, or any other client-supplied value —
+  closing **Host Header Injection** at the spec level. The reset page loads
+  **no third-party cross-origin assets** (only the first-party
+  `/static/css/styles.css` and inline scripts), closing **Referer Leakage**.
+
+**Try it:**
+
+1. Ensure `SENDGRID_API_KEY` and `SENDGRID_FROM` are set in `.env`
+   (see the Email Verification setup above).
+2. Restart the app. The login page now shows a **"Forgot your password?"**
+   link under the "Sign up" link.
+3. Click the link, enter the email on a verified local account, and check
+   the inbox. Open the link, enter a new strong password, and log in with it.
+4. Replay the same link — the page shows "already been used". Request a new
+   one and wait 15 minutes (or set `PASSWORD_RESET_TTL_SECONDS=30` and
+   restart) — the page shows "expired".
+
+---
 ## API Endpoints
 
 | Method | Endpoint | Description | Auth Required |
@@ -354,7 +396,7 @@ The **weak password storage** bug (VULN-5: MD5 → bcrypt) is **fixed** as of **
 
 ## Feature Enhancements
 
-The dark mode toggle (v0.1.1), password strength meter (v1.0.1), User Profile Page (v1.0.2), Continue with Google (v1.0.3), Email Verification on Signup (v1.0.4), Account Lockout (v1.0.5), Email OTP 2FA (v1.0.6), MFA via Authenticator App / TOTP (v1.0.7), QR Code Login (v1.0.8), and CAPTCHA on Login (v2.0.0) are **done** — see the Status column. **All planned feature enhancements are now complete.**
+The dark mode toggle (v0.1.1), password strength meter (v1.0.1), User Profile Page (v1.0.2), Continue with Google (v1.0.3), Email Verification on Signup (v1.0.4), Account Lockout (v1.0.5), Email OTP 2FA (v1.0.6), MFA via Authenticator App / TOTP (v1.0.7), QR Code Login (v1.0.8), CAPTCHA on Login (v2.0.0), and Forgot Password (v2.1.0) are **done** — see the Status column. **All planned feature enhancements are now complete.**
 
 Rows are listed in **release order** (by tag); the `#` column is the original
 feature id from the PRD (kept stable so cross-references like "Email OTP (#6)"
@@ -372,6 +414,7 @@ still resolve). Planned items have no tag yet.
 | **v1.0.7** | 5 | MFA via Authenticator App (TOTP) | Opt-in **authenticator-app two-factor authentication** (RFC 6238 TOTP): a user enrolls Google Authenticator / Authy / 1Password by scanning a **QR code** on `/profile`, confirms one code to activate, and thereafter a correct password no longer logs them in directly — it asks for the current **6-digit time-based code** on a dedicated `/login/totp` screen. **Independent of Email OTP (#6); when both are on, TOTP takes precedence** and no email is sent (TOTP needs neither SMTP nor Google, so it works on a fresh clone). The TOTP math is pure stdlib; the only new dependency is **`segno`** (pure-Python QR rendering). Session-only (no JWT); a replay guard + ±skew window + the unchanged per-IP rate limiter bound the code. No backup codes this slice (admin clears the flag in the DB). Fifth DB-schema change (3 columns on `users`). |
 | **v1.0.8** | 7 | QR Code Login | Log in by scanning a **QR code** shown on the login page from an already-authenticated device, which confirms on an **Approve / Reject** page — the WhatsApp-Web pattern. The unauthenticated browser **polls** for approval; pairing state lives in an **in-memory store** (`core/qr_login.py`, like the rate limiter), so there is **no database-schema change** and **no new dependency** (the QR image reuses `segno`). Tokens are `secrets.token_urlsafe(32)`, **single-use**, and short-lived; an **owner-binding** check (only the browser that generated a QR can be logged in by it) closes the login-CSRF / session-fixation vector. Approve/Reject are **session-gated POSTs** behind the existing CSRF + rate-limit middleware. Login stays **session-only (no JWT)**; the desktop is not re-challenged for 2FA because the approving device already satisfied it. `auth_service.py`, `main.py`, and the DB schema are unchanged. | **Done** |
 | **v2.0.0** | 8 | CAPTCHA on Login | Add a **Cloudflare Turnstile** CAPTCHA to the login form to block automated and bot-driven login attempts. The widget is shown on `/login` and **`POST /login` is verified server-side (stdlib `urllib` → Cloudflare `siteverify`) before any password check** — a failed CAPTCHA never reaches the account-lockout/bcrypt logic. **No new dependency, no database-schema change.** Keys come from a git-ignored `.env`; with none set the widget isn't rendered and login works exactly as today (graceful degrade). A configured-but-unreachable Cloudflare **fails open** (a bot filter must not lock out everyone during an outage). Always-on for the login form only; `auth_service.login()` and all middleware are unchanged. | **Done** |
+| **v2.1.0** | 10 | Forgot Password | Token-based password recovery: a user enters their email on `/forgot-password` and receives a single-use, 15-minute reset link over the existing SendGrid transport. The new password is enforced by the same five-criteria strength policy as `change_password` (length ≥ 8 + lower/upper/digit/special) and bcrypt-hashed before it touches the DB. The `POST /forgot-password` response is **identical for known and unknown emails** (enumeration resistance). **Fully hardened:** the emailed link AND the form's `action` are built **exclusively from `config.APP_BASE_URL`** — never from request headers or `request.url` — closing **Host Header Injection** at the spec level; the reset page loads **no third-party cross-origin assets** (only the first-party `/static/css/styles.css` and inline scripts), closing **Referer Leakage**. Sixth DB-schema change (new `password_resets` table; idempotent `CREATE TABLE IF NOT EXISTS`). Stdlib only, no new dependency. `auth_service.login()/signup()/change_password()`, `main.py`, `core/security.py`, `core/csrf.py`, and `core/rate_limit.py` are unchanged. | **Done** |
 
 ---
 

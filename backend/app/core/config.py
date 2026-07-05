@@ -1,6 +1,6 @@
 """Configuration + .env loading for the Continue-with-Google, Email
 Verification, Account-Lockout, Email-OTP-2FA, Authenticator-App-TOTP-2FA,
-QR-Code-Login, and CAPTCHA-on-Login features.
+QR-Code-Login, CAPTCHA-on-Login, and Forgot-Password features.
 
 Stdlib only -- no python-dotenv dependency. This module:
 
@@ -206,3 +206,13 @@ def is_captcha_configured() -> bool:
     widget or skip it entirely. Mirrors is_google_configured() / is_email_configured().
     """
     return bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+
+
+# --- Password-Reset settings (env-tunable, non-secret) ----------------------
+# After the user requests a reset, the emailed link is valid for
+# PASSWORD_RESET_TTL_SECONDS. The TTL is fixed at 15 minutes by spec; the env
+# var is a deliberate, non-secret knob that mirrors ACCOUNT_LOCKOUT_DURATION_SECONDS /
+# OTP_TTL_SECONDS, useful for local demos (e.g. PASSWORD_RESET_TTL_SECONDS=30 to
+# demo expiry in seconds). There is NO is_*_configured() gate of its own -- the
+# mailer reuses the existing is_email_configured(), and URLs reuse APP_BASE_URL.
+PASSWORD_RESET_TTL_SECONDS = int(os.environ.get("PASSWORD_RESET_TTL_SECONDS", "900"))

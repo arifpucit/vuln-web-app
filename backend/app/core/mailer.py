@@ -14,8 +14,9 @@ blocked) via stdlib ``urllib``. The API key is sent in the ``Authorization``
 header and is NEVER logged. (The earlier SMTP/Gmail transport has been removed --
 SendGrid is the only sender.)
 
-Public surface: ``send_verification_email`` (signup link) and ``send_otp_email``
-(login one-time code). Both are deliberately FAIL-SAFE -- they return ``False``
+Public surface: ``send_verification_email`` (signup link), ``send_otp_email``
+(login one-time code), and ``send_password_reset_email`` (forgot-password
+reset link). All three are deliberately FAIL-SAFE -- they return ``False``
 (never raise) when email is unconfigured or any send/API error occurs, logging
 the cause server-side. A failed send must never crash a request handler nor
 change auth state: the caller treats ``False`` as "couldn't send" and the user
@@ -156,4 +157,52 @@ def send_otp_email(to_email: str, username: str, code: str) -> bool:
     ok = _deliver(to_email, subject, text_body, html_body)
     if ok:
         logger.info("OTP email sent to %s", to_email)
+    return ok
+
+
+def send_password_reset_email(to_email: str, username: str, reset_url: str) -> bool:
+    """Send the forgot-password reset email. Returns True on success, else False.
+
+    Same fail-safe contract as send_verification_email and send_otp_email:
+    returns False (never raises) on any unconfigured-SendGrid or send/API
+    error. The caller (POST /forgot-password) ignores the return value and
+    returns the same generic response either way (enumeration resistance +
+    no oracle via SMTP success/failure). The username and the URL are
+    html.escape()'d before they enter the HTML body (VULN-2 posture). The
+    raw token (which is embedded in `reset_url`'s query string) is NEVER
+    logged (VULN-3 posture) -- only "Password reset email sent to <email>".
+    """
+    if not config.is_email_configured():
+        # Defensive: the routes already gate on is_email_configured(), but
+        # if anyone calls this directly, no transport means no send.
+        logger.warning("Email not configured; skipping password reset email to %s", to_email)
+        return False
+
+    safe_username = html.escape(username or "", quote=True)
+    safe_url = html.escape(reset_url, quote=True)
+    minutes = max(1, config.PASSWORD_RESET_TTL_SECONDS // 60)
+
+    subject = "Reset your password - Security Vulnerability Lab"
+    text_body = (
+        f"Hi {username},\n\n"
+        "We received a request to reset the password for your account on the "
+        "Security Vulnerability Lab. Open the link below to set a new "
+        f"password (valid for {minutes} minutes):\n\n"
+        f"{reset_url}\n\n"
+        "If you did not request a reset, you can safely ignore this email -- "
+        "your password will remain unchanged."
+    )
+    html_body = (
+        f"<p>Hi {safe_username},</p>"
+        "<p>We received a request to reset the password for your account on "
+        "the <strong>Security Vulnerability Lab</strong>. Click the link "
+        f"below to set a new password (valid for {minutes} minutes):</p>"
+        f'<p><a href="{safe_url}">Reset my password</a></p>'
+        "<p>If you did not request a reset, you can safely ignore this email -- "
+        "your password will remain unchanged.</p>"
+    )
+
+    ok = _deliver(to_email, subject, text_body, html_body)
+    if ok:
+        logger.info("Password reset email sent to %s", to_email)
     return ok
