@@ -111,6 +111,10 @@
                         <label class="form-label" for="confirm_password">Confirm Password</label>
                         <input type="password" id="confirm_password" class="form-input" placeholder="Confirm your password" required>
                         <span id="password-error" class="password-error" style="display: none;">Passwords do not match</span>
+                        <div class="show-password-container" style="display: flex; align-items: center; margin-top: 10px; gap: 6px;">
+                            <input type="checkbox" id="show-signup-password-checkbox" onclick="toggleSignupPasswordCheckbox()" style="cursor: pointer; width: 14px; height: 14px; margin: 0;">
+                            <label for="show-signup-password-checkbox" style="font-size: 13px; color: var(--text-muted, #666); cursor: pointer; user-select: none;">Show passwords</label>
+                        </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Create Account</button>
                 </form>
@@ -134,6 +138,21 @@
             </div>
         </div>
     </div>
+    <script>
+        function toggleSignupPasswordCheckbox() {
+            const passwordInput = document.getElementById('password');
+            const confirmPasswordInput = document.getElementById('confirm_password');
+            const checkbox = document.getElementById('show-signup-password-checkbox');
+        
+            if (checkbox.checked) {
+                passwordInput.type = "text";
+                if (confirmPasswordInput) confirmPasswordInput.type = "text";
+            } else {
+                passwordInput.type = "password";
+                if (confirmPasswordInput) confirmPasswordInput.type = "password";
+            }
+        }
+    </script>
 
     <script>
         const form = document.getElementById('signup-form');

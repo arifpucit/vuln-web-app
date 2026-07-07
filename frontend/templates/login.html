@@ -88,6 +88,10 @@
                     <div class="form-group">
                         <label class="form-label" for="password">Password</label>
                         <input type="password" id="password" name="password" class="form-input" placeholder="Enter your password" required>
+                        <div class="show-password-container" style="display: flex; align-items: center; margin-top: 8px; gap: 6px;">
+                            <input type="checkbox" id="show-password-checkbox" onclick="togglePasswordCheckbox()" style="cursor: pointer; width: 14px; height: 14px; margin: 0;">
+                            <label for="show-password-checkbox" style="font-size: 13px; color: var(--text-muted, #666); cursor: pointer; user-select: none;">Show password</label>
+                        </div>
                     </div>
                     <!-- CAPTCHA on Login (v2.0.0): the Turnstile widget, spliced in by
                          GET /login only when configured (else empty). The widget auto-
@@ -129,6 +133,18 @@
             </div>
         </div>
     </div>
+    <script>
+        function togglePasswordCheckbox() {
+            const passwordInput = document.getElementById('password');
+            const checkbox = document.getElementById('show-password-checkbox');
+        
+            if (checkbox.checked) {
+                passwordInput.type = "text";
+            } else {
+            passwordInput.type = "password";
+            }
+        }
+    </script>
 
     <script>
         const form = document.getElementById('login-form');
