@@ -1,12 +1,11 @@
 """Configuration + .env loading for the Continue-with-Google, Email
 Verification, Account-Lockout, Email-OTP-2FA, Authenticator-App-TOTP-2FA,
-QR-Code-Login, and CAPTCHA-on-Login features.
+QR-Code-Login, CAPTCHA-on-Login, and Geolocation / Impossible-Travel features.
 
 Stdlib only -- no python-dotenv dependency. This module:
 
 1. Loads a repo-root `.env` file (if present) into ``os.environ`` so a local
-   developer can keep their Google credentials AND SMTP credentials in one
-   git-ignored file.
+   developer can keep their credentials in one git-ignored file.
 2. Exposes the Google OAuth settings and an ``is_google_configured()`` gate.
 3. Exposes the SendGrid / email-verification settings and an
    ``is_email_configured()`` gate.
@@ -206,3 +205,17 @@ def is_captcha_configured() -> bool:
     widget or skip it entirely. Mirrors is_google_configured() / is_email_configured().
     """
     return bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+
+
+# --- Geolocation / Impossible Travel settings (v2.1.0) -----------------------
+# Optional: a free IP-geolocation API endpoint. If unset, the feature degrades
+# safely (skips the lookup and updates only the last-login time/IP). The URL can
+# include a {ip} placeholder that gets substituted at call time (e.g.
+# "https://ip-api.com/json/{ip}"). The timeout bounds a slow provider.
+GEO_API_URL = os.environ.get("GEO_API_URL", "")
+GEO_HTTP_TIMEOUT = float(os.environ.get("GEO_HTTP_TIMEOUT", "5"))
+
+
+def is_geo_configured() -> bool:
+    """Return True when a geolocation endpoint is configured."""
+    return bool(GEO_API_URL)

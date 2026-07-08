@@ -15,14 +15,18 @@ Closed vulnerabilities relevant to this file:
   per-call salt makes SQL equality matching impossible).
 """
 
+import logging
 import re
 import sqlite3
+import time
 
 from starlette.requests import Request
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 from app.db.session import get_db
-from app.core import config
+from app.core import config, geo
+
+logger = logging.getLogger(__name__)
 from app.core.security import hash_password, verify_password
 from app.services import verification_service
 from app.services import lockout_service
@@ -216,6 +220,77 @@ def login(request: Request, username: str, password: str):
         # BEFORE the verification gate, so a correct-but-unverified login also
         # resets the chain (it is not a brute-force attempt).
         lockout_service.reset(user["id"])
+
+        # Geolocation / Impossible-Travel Detection (v2.1.0): after successful
+        # password verification but BEFORE the session is created, look up the
+        # current IP's coordinates and compare against the user's prior login
+        # location and time. If the movement implies travel faster than 1000
+        # km/h, treat it as a potential account takeover: log a warning, clear
+        # the user's email-verified status, issue a fresh verification email,
+        # and return the standard unverified 401 -- no session is created.
+        # Local/private IPs, missing config, and provider outages degrade
+        # safely (the login still proceeds and the last-login metadata is
+        # updated without coordinates).
+        current_ip = request.client.host if request.client else ""
+        current_time = time.time()
+        current_coords = geo.lookup_coordinates(current_ip)
+        prev_lat = user["last_login_lat"]
+        prev_lon = user["last_login_lon"]
+        prev_time = user["last_login_time"]
+        suspicious = False
+        if current_coords is not None:
+            suspicious = geo.should_flag_impossible_travel(
+                prev_lat, prev_lon, prev_time,
+                current_coords["lat"], current_coords["lon"], current_time,
+            )
+        if suspicious:
+            logger.warning(
+                "Impossible travel detected for user %s from %s",
+                user["username"], current_ip,
+            )
+            conn = get_db()
+            try:
+                conn.execute(
+                    "UPDATE users SET is_verified = 0 WHERE id = ?",
+                    [user["id"]],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            verification_service.start_verification(
+                user["id"], user["username"], user["email"], background=True
+            )
+            return JSONResponse(
+                content={
+                    "error": (
+                        "Please verify your email before logging in. "
+                        "Check your inbox for the verification link."
+                    ),
+                    "unverified": True,
+                },
+                status_code=401,
+            )
+
+        # Update last-login metadata on the normal (non-suspicious) path.
+        # This runs before the is_verified / 2FA branches so the columns
+        # are always fresh for the next geo comparison.
+        conn = get_db()
+        try:
+            conn.execute(
+                "UPDATE users SET last_login_ip = ?, last_login_time = ?, "
+                "last_login_lat = ?, last_login_lon = ? WHERE id = ?",
+                [
+                    current_ip,
+                    current_time,
+                    current_coords["lat"] if current_coords else None,
+                    current_coords["lon"] if current_coords else None,
+                    user["id"],
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
         # Email-Verification gate (v1.0.4): a correct password is NOT enough --
         # the account must be verified before a session is created. Google
         # accounts and grandfathered legacy accounts are is_verified=1, so they

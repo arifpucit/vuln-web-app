@@ -88,15 +88,23 @@ def init_db():
       reaches OTP_MAX_ATTEMPTS.
     - `otp_last_sent REAL`: Unix epoch seconds of the most recent OTP send, used
       to enforce the per-account resend cooldown, or NULL.
-    - `totp_secret TEXT`: the base32 authenticator-app TOTP shared secret
+    - `totp_secret`: the base64 authenticator-app TOTP shared secret
       (MFA-via-Authenticator-App feature, v1.0.7). Set as *pending* when
-      enrollment starts, persists while enrolled, NULL when the user has none.
+      enrollment starts, persists while enrolled, NULL when the account has none.
     - `totp_enabled INTEGER DEFAULT 0`: 1 only after a confirm code validated the
       secret; 0 while disabled or while a secret is pending (generated but not yet
       confirmed). Defaults to 0, so existing rows need no grandfather UPDATE.
     - `totp_last_step INTEGER`: the last accepted TOTP time-step counter, for
       replay protection (a code already used cannot be reused inside its window);
       NULL until the first successful verify.
+    - `last_login_ip TEXT`: most recent successful login IP address, or NULL
+      (Geolocation & Impossible Travel Detection feature, v2.1.0).
+    - `last_login_time REAL`: Unix epoch seconds of the most recent successful
+      login, or NULL (Geolocation & Impossible Travel Detection, v2.1.0).
+    - `last_login_lat REAL`: latitude of the most recent successful login
+      location, or NULL (Geolocation & Impossible Travel Detection, v2.1.0).
+    - `last_login_lon REAL`: longitude of the most recent successful login
+      location, or NULL (Geolocation & Impossible Travel Detection, v2.1.0).
     """
     conn = get_db()
     conn.execute(
@@ -121,7 +129,11 @@ def init_db():
             otp_last_sent              REAL,
             totp_secret                TEXT,
             totp_enabled               INTEGER DEFAULT 0,
-            totp_last_step             INTEGER
+            totp_last_step             INTEGER,
+            last_login_ip              TEXT,
+            last_login_time            REAL,
+            last_login_lat             REAL,
+            last_login_lon             REAL
         )"""
     )
 
@@ -160,6 +172,12 @@ def init_db():
         "totp_secret": "ALTER TABLE users ADD COLUMN totp_secret TEXT",
         "totp_enabled": "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
         "totp_last_step": "ALTER TABLE users ADD COLUMN totp_last_step INTEGER",
+        # Geolocation / Impossible Travel feature (v2.1.0): four columns with
+        # no grandfather UPDATE needed -- NULL means "no prior login data".
+        "last_login_ip": "ALTER TABLE users ADD COLUMN last_login_ip TEXT",
+        "last_login_time": "ALTER TABLE users ADD COLUMN last_login_time REAL",
+        "last_login_lat": "ALTER TABLE users ADD COLUMN last_login_lat REAL",
+        "last_login_lon": "ALTER TABLE users ADD COLUMN last_login_lon REAL",
     }
     for column, ddl in migrations.items():
         if column not in existing:

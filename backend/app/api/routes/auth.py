@@ -64,7 +64,7 @@ def _load_template(name: str) -> str:
     factored out so the new routes that just render a static page (and the
     email-not-configured gate used in two places) stay one-liners.
     """
-    with open(os.path.join(TEMPLATE_DIR, name), "r") as f:
+    with open(os.path.join(TEMPLATE_DIR, name), "r", encoding="utf-8") as f:
         return f.read()
 
 
@@ -91,7 +91,7 @@ async def signup_page(request: Request):
     if not config.is_email_configured():
         return HTMLResponse(content=_load_template("email_not_configured.html"))
 
-    with open(os.path.join(TEMPLATE_DIR, "signup.html"), "r") as f:
+    with open(os.path.join(TEMPLATE_DIR, "signup.html"), "r", encoding="utf-8") as f:
         page = f.read()
     # FIXED: CSRF closed -- splice the per-session token into the form's hidden field.
     # get_or_create_csrf_token() is idempotent: it returns the existing
@@ -214,7 +214,7 @@ async def login_page(request: Request):
     Same pattern as signup_page(): load template, issue/read token,
     splice via str.replace.
     """
-    with open(os.path.join(TEMPLATE_DIR, "login.html"), "r") as f:
+    with open(os.path.join(TEMPLATE_DIR, "login.html"), "r", encoding="utf-8") as f:
         page = f.read()
     # FIXED: CSRF closed -- splice the per-session token into the form's hidden field.
     token = get_or_create_csrf_token(request)
@@ -343,7 +343,7 @@ async def welcome_page(request: Request):
     # dashboard needs no verification check or banner.
     username = request.session.get("username", "")
 
-    with open(os.path.join(TEMPLATE_DIR, "dashboard.html"), "r") as f:
+    with open(os.path.join(TEMPLATE_DIR, "dashboard.html"), "r", encoding="utf-8") as f:
         page = f.read()
 
     # FIXED: Stored XSS closed -- username escaped before substitution.
@@ -388,7 +388,7 @@ async def profile_page(request: Request):
     twofa_enabled = bool(row["two_factor_enabled"]) if row else False
     totp_enabled = bool(row["totp_enabled"]) if row else False
 
-    with open(os.path.join(TEMPLATE_DIR, "profile.html"), "r") as f:
+    with open(os.path.join(TEMPLATE_DIR, "profile.html"), "r", encoding="utf-8") as f:
         page = f.read()
 
     # FIXED: CSRF closed -- issue/splice the per-session token for the form.
@@ -738,7 +738,7 @@ async def google_login(request: Request):
     and the password flow is unaffected.
     """
     if not config.is_google_configured():
-        with open(os.path.join(TEMPLATE_DIR, "oauth_not_configured.html"), "r") as f:
+        with open(os.path.join(TEMPLATE_DIR, "oauth_not_configured.html"), "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return await oauth.google.authorize_redirect(request, config.GOOGLE_REDIRECT_URI)
 
