@@ -97,6 +97,11 @@ def init_db():
     - `totp_last_step INTEGER`: the last accepted TOTP time-step counter, for
       replay protection (a code already used cannot be reused inside its window);
       NULL until the first successful verify.
+    - `last_login_ip TEXT`: the most recent successful login IP, or NULL.
+    - `last_login_time REAL`: Unix epoch seconds of the most recent successful
+      login, or NULL.
+    - `last_login_lat REAL`: the most recent successful login latitude, or NULL.
+    - `last_login_lon REAL`: the most recent successful login longitude, or NULL.
     """
     conn = get_db()
     conn.execute(
@@ -121,7 +126,11 @@ def init_db():
             otp_last_sent              REAL,
             totp_secret                TEXT,
             totp_enabled               INTEGER DEFAULT 0,
-            totp_last_step             INTEGER
+            totp_last_step             INTEGER,
+            last_login_ip              TEXT,
+            last_login_time            REAL,
+            last_login_lat             REAL,
+            last_login_lon             REAL
         )"""
     )
 
@@ -160,6 +169,12 @@ def init_db():
         "totp_secret": "ALTER TABLE users ADD COLUMN totp_secret TEXT",
         "totp_enabled": "ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0",
         "totp_last_step": "ALTER TABLE users ADD COLUMN totp_last_step INTEGER",
+        # Geolocation / Impossible Travel feature (v2.1.0): four additive columns.
+        # The defaults are NULL until the first successful login updates them.
+        "last_login_ip": "ALTER TABLE users ADD COLUMN last_login_ip TEXT",
+        "last_login_time": "ALTER TABLE users ADD COLUMN last_login_time REAL",
+        "last_login_lat": "ALTER TABLE users ADD COLUMN last_login_lat REAL",
+        "last_login_lon": "ALTER TABLE users ADD COLUMN last_login_lon REAL",
     }
     for column, ddl in migrations.items():
         if column not in existing:

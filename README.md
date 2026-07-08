@@ -74,8 +74,9 @@ This repository ships in several tagged releases. The versions below are the mai
 | **v1.0.7** | Students who want the reference **plus authenticator-app 2FA** | Everything in v1.0.6 plus **MFA via Authenticator App (TOTP)**: a user enrolls Google Authenticator / Authy by scanning a **QR code** on their profile and confirming one code; thereafter a correct password issues a **TOTP challenge** on a dedicated `/login/totp` screen instead of completing login. **Independent of Email OTP and takes precedence** when both are on (no email sent); it needs **no SMTP and no Google**, so it works on a fresh clone. TOTP math is pure stdlib; the **only new dependency is `segno`** (pure-Python QR). Session-only (no JWT); replay-guarded. Fifth DB-schema change (3 columns on `users`). |
 | **v1.0.8** | Students who want the reference **plus QR-code login** | Everything in v1.0.7 plus **QR Code Login**: an unauthenticated browser is shown a **QR code** on the login page and an already-signed-in device scans it, confirms on an **Approve / Reject** page, and logs the first browser in — the WhatsApp-Web pattern. The desktop **polls** for approval; pairing state is held in an **in-memory store** (like the rate limiter), so there is **no database-schema change** and **no new dependency** (the QR image reuses `segno`). Tokens are single-use and short-lived, and an **owner-binding** check (only the browser that generated a QR can be logged in by it) closes the login-CSRF vector. Login stays **session-only (no JWT)**; the trust comes from the already-authenticated device (its second factor was already satisfied). |
 | **v2.0.0** | Students who want the reference **plus CAPTCHA on login** | Everything in v1.0.8 plus **CAPTCHA on Login** (**Cloudflare Turnstile**): the login form shows a Turnstile widget and **`POST /login` is verified server-side before any password check**, blocking automated/bot login attempts. Verification is a stdlib-`urllib` call to Cloudflare's `siteverify` — **no new dependency** and **no database-schema change**. With no keys set the widget isn't shown and login works exactly as today (graceful degrade, like the Google/SMTP setup pages); a configured-but-unreachable Cloudflare **fails open** so an outage can't lock everyone out. Keys come from a git-ignored `.env`; the check runs **before** the account-lockout/bcrypt logic, which is otherwise unchanged. |
+| **v2.1.0** | Students who want the reference **plus geolocation & impossible-travel detection** | Everything in v2.0.0 plus **Geolocation & Impossible Travel Detection**: on successful password login the app checks the current IP against the user's last known coordinates and time, and if the movement implies travel faster than 1000 km/h it marks the account unverified, re-issues a verification email, and returns the standard unverified `401`. Local/private IPs, missing config, and provider outages degrade safely (the login still proceeds and the last-login metadata is updated). |
 
-The incremental tags between them (**v0.1.2 – v0.1.7**) each close one additional vulnerability — see the [Bug Fixes](#bug-fixes) table for the version-by-version mapping. The feature-enhancement tags build on top of v1.0.0: **v1.0.1** adds the password strength meter, **v1.0.2** the User Profile Page, **v1.0.3** Continue with Google, **v1.0.4** Email Verification on Signup, **v1.0.5** Account Lockout, **v1.0.6** Email OTP 2FA, **v1.0.7** MFA via Authenticator App (TOTP), **v1.0.8** QR Code Login, and **v2.0.0** CAPTCHA on Login.
+The incremental tags between them (**v0.1.2 – v0.1.7**) each close one additional vulnerability — see the [Bug Fixes](#bug-fixes) table for the version-by-version mapping. The feature-enhancement tags build on top of v1.0.0: **v1.0.1** adds the password strength meter, **v1.0.2** the User Profile Page, **v1.0.3** Continue with Google, **v1.0.4** Email Verification on Signup, **v1.0.5** Account Lockout, **v1.0.6** Email OTP 2FA, **v1.0.7** MFA via Authenticator App (TOTP), **v1.0.8** QR Code Login, **v2.0.0** CAPTCHA on Login, and **v2.1.0** Geolocation & Impossible Travel Detection.
 
 ### Download the version you want
 
@@ -168,35 +169,45 @@ As of **v1.0.4**, creating a username/password account sends a confirmation
 email, and the account **cannot log in until the link is clicked** (the login
 page then offers a credential-checked "Resend verification email" button).
 Because sign-up depends on email, the signup page shows a friendly **"sign-up
-isn't available yet"** page until you configure an SMTP server. (Login for
-already-verified accounts and **Continue with Google** still work without SMTP;
+isn't available yet"** page until email is configured. (Login for
+already-verified accounts and **Continue with Google** still work without email;
 Google accounts are auto-verified.)
 
-The app uses Python's standard-library SMTP client — **no extra dependency**.
-The easiest provider is Gmail with an App Password:
+Email is delivered through the **SendGrid HTTPS API** (stdlib `urllib` — **no
+extra dependency**). SendGrid is used instead of SMTP because many hosts (e.g.
+Render's free plan) **block outbound SMTP ports**, whereas SendGrid's API works
+over HTTPS (port 443). You need a SendGrid API key and a verified sender:
 
-1. **Enable 2-Step Verification** on the Google account (required before app
-   passwords exist): https://myaccount.google.com/security
-2. **Create an App Password** — https://myaccount.google.com/apppasswords —
-   name it e.g. `vuln-web-app`. Google shows a **16-character** password once.
-3. **Add the credentials locally** — copy the template and fill in your values:
+1. **Create a SendGrid account** (free tier is enough) at https://sendgrid.com.
+2. **Verify a sender** — *Settings → Sender Authentication* → either verify a
+   **Single Sender** email address or authenticate a domain. This address is
+   what `SENDGRID_FROM` must be set to.
+3. **Create an API key** — *Settings → API Keys → Create API Key* with the
+   **Mail Send** permission. SendGrid shows the key (starting `SG.`) **once** —
+   copy it.
+4. **Add the credentials** — either locally in `.env`, or as environment
+   variables on your host (e.g. Render):
    ```bash
    cp .env.example .env
    # then edit .env:
-   #   SMTP_HOST=smtp.gmail.com
-   #   SMTP_PORT=587
-   #   SMTP_USER=your-address@gmail.com
-   #   SMTP_PASSWORD=your-16-char-app-password
-   #   SMTP_FROM=your-address@gmail.com
-   #   APP_BASE_URL=http://localhost:3001
+   #   SENDGRID_API_KEY=SG.your-sendgrid-api-key
+   #   SENDGRID_FROM=your-verified-sender@example.com
+   #   APP_BASE_URL=http://localhost:3001     # your public origin in production
    ```
-4. **Restart** — `uv run backend/app/main.py`. Sign-up now sends verification
+5. **Restart** — `uv run backend/app/main.py`. Sign-up now sends verification
    emails, and the link in the email (valid 1 hour) confirms the account.
+
+> **Deploying (e.g. Render):** the real `.env` is git-ignored and **not**
+> deployed — set `SENDGRID_API_KEY`, `SENDGRID_FROM`, and `APP_BASE_URL` as
+> environment variables in your host's dashboard, and set `APP_BASE_URL` to your
+> public `https://` origin (no port). Without these the signup page shows the
+> "not configured" notice.
 
 The verification token is a single-use, 1-hour `secrets.token_urlsafe(32)`
 value stored on the user's row; `APP_BASE_URL` is the public origin used to
-build the link. The real `.env` is **git-ignored** — never commit your secret;
-`.env.example` holds placeholders only.
+build the link. `SENDGRID_FROM` must be an address (or domain) **verified in
+SendGrid**, or the send is rejected. The real `.env` is **git-ignored** — never
+commit your API key; `.env.example` holds placeholders only.
 
 ---
 
@@ -239,6 +250,24 @@ by password + lockout + rate-limit) so an outage can't lock everyone out.
 
 *(This feature adds no new API endpoints — `POST /login` is unchanged in path and
 method; only its request now carries the Turnstile token.)*
+
+---
+
+## Geolocation & Impossible Travel Detection — Setup (optional)
+
+As of **v2.1.0**, password logins can consult a free geolocation provider and compare
+the new location with the user's previous login coordinates. The feature degrades
+safely when the IP is localhost/private, when no provider is configured, or when the
+provider is unreachable. No new dependency is added; the lookup uses Python's
+standard-library `urllib` and `json` only.
+
+1. Set a geolocation endpoint in the environment, for example:
+   ```bash
+   export GEO_API_URL=https://ip-api.com/json/{ip}
+   ```
+2. Optionally set `GEO_HTTP_TIMEOUT` to bound the lookup latency.
+3. Restart the app; if the endpoint is missing or unreachable the app still allows
+   login and updates the last-login metadata.
 
 ---
 ## API Endpoints

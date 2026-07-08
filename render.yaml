@@ -1,0 +1,17 @@
+# Render service manifest for deploying the app.
+# See https://render.com/docs/deploying-python
+# IMPORTANT: Do NOT store secrets here. Set these env vars in Render's
+# dashboard (Environment > Environment Variables) for the service:
+#   - SECRET_KEY
+#   - SENDGRID_API_KEY
+#   - SENDGRID_FROM
+#   - APP_BASE_URL (set to your public URL, e.g. https://my-app.onrender.com)
+
+services:
+  - type: web
+    name: vuln-web-app
+    env: python
+    plan: free
+    buildCommand: "uv sync"
+    startCommand: "uv run backend/app/main.py"
+    # You can set instance size, health checks, and mounts in the Render UI.

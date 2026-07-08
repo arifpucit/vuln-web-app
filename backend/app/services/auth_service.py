@@ -15,19 +15,23 @@ Closed vulnerabilities relevant to this file:
   per-call salt makes SQL equality matching impossible).
 """
 
+import logging
 import re
 import sqlite3
+import time
 
 from starlette.requests import Request
 from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 
 from app.db.session import get_db
-from app.core import config
+from app.core import config, geo
 from app.core.security import hash_password, verify_password
 from app.services import verification_service
 from app.services import lockout_service
 from app.services import otp_service
 from app.services import totp_service
+
+logger = logging.getLogger(__name__)
 
 
 def password_meets_policy(password: str) -> bool:
@@ -216,6 +220,69 @@ def login(request: Request, username: str, password: str):
         # BEFORE the verification gate, so a correct-but-unverified login also
         # resets the chain (it is not a brute-force attempt).
         lockout_service.reset(user["id"])
+
+        current_ip = request.client.host if request.client else ""
+        current_time = time.time()
+        current_coords = geo.lookup_coordinates(current_ip)
+        suspicious = False
+        if current_coords is not None:
+            suspicious = geo.should_flag_impossible_travel(
+                user["last_login_lat"],
+                user["last_login_lon"],
+                user["last_login_time"],
+                current_coords["lat"],
+                current_coords["lon"],
+                current_time,
+            )
+        if suspicious:
+            logger.warning(
+                "Impossible travel detected for user %s from %s",
+                user["username"],
+                current_ip,
+            )
+            conn = get_db()
+            try:
+                conn.execute(
+                    "UPDATE users SET is_verified = 0 WHERE id = ?",
+                    [user["id"]],
+                )
+                conn.commit()
+            except Exception:
+                logger.exception("Failed to mark user as unverified after suspicious login")
+            finally:
+                conn.close()
+            verification_service.start_verification(
+                user["id"], user["username"], user["email"], background=True
+            )
+            return JSONResponse(
+                content={
+                    "error": (
+                        "Please verify your email before logging in. "
+                        "Check your inbox for the verification link."
+                    ),
+                    "unverified": True,
+                },
+                status_code=401,
+            )
+
+        conn = get_db()
+        try:
+            conn.execute(
+                "UPDATE users SET last_login_ip = ?, last_login_time = ?, last_login_lat = ?, last_login_lon = ? WHERE id = ?",
+                [
+                    current_ip,
+                    current_time,
+                    current_coords["lat"] if current_coords else None,
+                    current_coords["lon"] if current_coords else None,
+                    user["id"],
+                ],
+            )
+            conn.commit()
+        except Exception:
+            logger.exception("Failed to update last-login metadata")
+        finally:
+            conn.close()
+
         # Email-Verification gate (v1.0.4): a correct password is NOT enough --
         # the account must be verified before a session is created. Google
         # accounts and grandfathered legacy accounts are is_verified=1, so they
