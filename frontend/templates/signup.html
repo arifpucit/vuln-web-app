@@ -30,6 +30,7 @@
     <!-- Shared Header -->
     <header class="header">
         <div class="header-title">Security Vulnerability Lab</div>
+        <span id="secure-indicator">{{secure_indicator}}</span>
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">
             <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
         </button>
@@ -107,6 +108,7 @@
                             </li>
                         </ul>
                     </div>
+                    <div id="hibp-info">{{hibp_info}}</div>
                     <div class="form-group">
                         <label class="form-label" for="confirm_password">Confirm Password</label>
                         <input type="password" id="confirm_password" class="form-input" placeholder="Confirm your password" required>

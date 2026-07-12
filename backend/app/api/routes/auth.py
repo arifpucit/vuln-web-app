@@ -101,6 +101,10 @@ async def signup_page(request: Request):
     # splice safe under future token-format changes.
     token = get_or_create_csrf_token(request)
     page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    hibp_info = '<div class="hibp-notice">Your password is checked against the Have I Been Pwned breach database to prevent use of compromised credentials.</div>' if config.HIBP_ENABLED else ''
+    page = page.replace('{{hibp_info}}', hibp_info)
+    secure_indicator = '🔒' if request.url.scheme == "https" else '🌐'
+    page = page.replace('{{secure_indicator}}', secure_indicator)
     return HTMLResponse(content=page)
 
 
@@ -219,6 +223,10 @@ async def login_page(request: Request):
     # FIXED: CSRF closed -- splice the per-session token into the form's hidden field.
     token = get_or_create_csrf_token(request)
     page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    hibp_info = '<div class="hibp-notice">Your password is checked against the Have I Been Pwned breach database to prevent use of compromised credentials.</div>' if config.HIBP_ENABLED else ''
+    page = page.replace('{{hibp_info}}', hibp_info)
+    secure_indicator = '🔒' if request.url.scheme == "https" else '🌐'
+    page = page.replace('{{secure_indicator}}', secure_indicator)
     # CAPTCHA on Login (v2.0.0): render the Cloudflare Turnstile widget + script
     # only when both keys are configured; otherwise both placeholders collapse to
     # "" and the login page is byte-for-byte the pre-CAPTCHA page (graceful degrade).
@@ -388,12 +396,18 @@ async def profile_page(request: Request):
     twofa_enabled = bool(row["two_factor_enabled"]) if row else False
     totp_enabled = bool(row["totp_enabled"]) if row else False
 
+
+
     with open(os.path.join(TEMPLATE_DIR, "profile.html"), "r") as f:
         page = f.read()
 
     # FIXED: CSRF closed -- issue/splice the per-session token for the form.
     token = get_or_create_csrf_token(request)
     page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    hibp_info = '<div class="hibp-notice">Your password is checked against the Have I Been Pwned breach database to prevent use of compromised credentials.</div>' if config.HIBP_ENABLED else ''
+    page = page.replace('{{hibp_info}}', hibp_info)
+    secure_indicator = '🔒' if request.url.scheme == "https" else '🌐'
+    page = page.replace('{{secure_indicator}}', secure_indicator)
 
     # FIXED: Stored XSS closed -- escape every user-controlled value before
     # splicing (output encoding, same posture as the dashboard username).
@@ -461,6 +475,10 @@ async def login_otp_page(request: Request):
     # FIXED: CSRF closed -- splice the per-session token into the form's hidden field.
     token = get_or_create_csrf_token(request)
     page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    hibp_info = '<div class="hibp-notice">Your password is checked against the Have I Been Pwned breach database to prevent use of compromised credentials.</div>' if config.HIBP_ENABLED else ''
+    page = page.replace('{{hibp_info}}', hibp_info)
+    secure_indicator = '🔒' if request.url.scheme == "https" else '🌐'
+    page = page.replace('{{secure_indicator}}', secure_indicator)
     return HTMLResponse(content=page)
 
 
@@ -666,6 +684,10 @@ async def login_totp_page(request: Request):
     # FIXED: CSRF closed -- splice the per-session token into the form's hidden field.
     token = get_or_create_csrf_token(request)
     page = page.replace("{{csrf_token}}", html.escape(token, quote=True))
+    hibp_info = '<div class="hibp-notice">Your password is checked against the Have I Been Pwned breach database to prevent use of compromised credentials.</div>' if config.HIBP_ENABLED else ''
+    page = page.replace('{{hibp_info}}', hibp_info)
+    secure_indicator = '🔒' if request.url.scheme == "https" else '🌐'
+    page = page.replace('{{secure_indicator}}', secure_indicator)
     return HTMLResponse(content=page)
 
 
@@ -792,7 +814,6 @@ async def google_callback(request: Request):
     request.session["user_id"] = user["id"]
     request.session["username"] = user["username"]
     request.session["email"] = user["email"]
-
     return RedirectResponse(url="/welcome", status_code=302)
 
 

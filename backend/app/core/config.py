@@ -206,3 +206,21 @@ def is_captcha_configured() -> bool:
     widget or skip it entirely. Mirrors is_google_configured() / is_email_configured().
     """
     return bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+
+
+# --- Have I Been Pwned (HIBP) settings (env-tunable, non-secret) ----------------
+# When enabled, checks new passwords during signup and password change against
+# the Have I Been Pwned password breach database using k-anonymity (only first 5
+# chars of SHA-1 hash sent to API). This helps prevent use of known compromised
+# passwords. Not a secret and has no is_*_configured() gate of its own -- defaults
+# to disabled but can be enabled via environment variable.
+HIBP_ENABLED = os.environ.get("HIBP_ENABLED", "false").lower() == "true"
+
+
+def is_hibp_configured() -> bool:
+    """Return True when HIBP breach checking is enabled via environment variable.
+
+    This feature checks passwords against the Have I Been Pwned database during
+    signup and password changes to prevent use of known compromised credentials.
+    """
+    return HIBP_ENABLED

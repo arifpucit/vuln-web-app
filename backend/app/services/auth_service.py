@@ -28,6 +28,7 @@ from app.services import verification_service
 from app.services import lockout_service
 from app.services import otp_service
 from app.services import totp_service
+from app.core import hibp
 
 
 def password_meets_policy(password: str) -> bool:
@@ -72,6 +73,15 @@ def signup(username: str, email: str, password: str):
     if not username or not email or not password:
         return HTMLResponse(
             content="<h3>All fields are required</h3><a href='/signup'>Go back</a>",
+            status_code=400,
+        )
+
+    # Check for compromised password (if HIBP configured)
+    if config.is_hibp_configured() and hibp.is_password_compromised(password):
+        return HTMLResponse(
+            content="<h3>This password has been exposed in a data breach. "
+                    "Please choose a different password.</h3>"
+                    "<a href='/signup'>Go back</a>",
             status_code=400,
         )
 
@@ -366,6 +376,16 @@ def change_password(request: Request, current_password: str, new_password: str):
                     "uppercase letter, a lowercase letter, a digit, and a special "
                     "character"
                 )
+            },
+            status_code=400,
+        )
+
+    # Check for compromised password (if HIBP configured)
+    if config.is_hibp_configured() and hibp.is_password_compromised(new_password):
+        return JSONResponse(
+            content={
+                "error": "This password has been exposed in a data breach. "
+                         "Please choose a different password."
             },
             status_code=400,
         )

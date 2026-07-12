@@ -30,6 +30,7 @@
     <!-- Shared Header -->
     <header class="header">
         <div class="header-title">Security Vulnerability Lab</div>
+        <span id="secure-indicator">{{secure_indicator}}</span>
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to dark mode">
             <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
         </button>
@@ -87,6 +88,7 @@
                 <div id="profile-message" class="profile-message" role="status" aria-live="polite" style="display: none;"></div>
                 <button type="submit" class="btn btn-primary">Update Password</button>
             </form>
+            <div id="hibp-info">{{hibp_info}}</div>
         </div>
 
         <!-- Two-Factor Authentication (Email OTP 2FA, v1.0.6) -->
